@@ -2,7 +2,7 @@
    Données stockées uniquement sur l'appareil (localStorage). */
 'use strict';
 
-const VERSION = '1.2.0';
+const VERSION = '1.2.1';
 const STORE_KEY = 'icp14.v1';
 
 /* ---------- Épreuves ---------- */
@@ -927,5 +927,15 @@ window.addEventListener('beforeunload', e => { if (RUN) { e.preventDefault(); e.
 render();
 
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
-  navigator.serviceWorker.register('sw.js').catch(e => console.warn('SW', e));
+  // cherche une nouvelle version à chaque ouverture et recharge dès qu'elle est installée
+  let reloaded = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (reloaded || RUN) return; reloaded = true; location.reload();
+  });
+  navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' })
+    .then(reg => {
+      reg.update();
+      document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && !RUN) reg.update(); });
+    })
+    .catch(e => console.warn('SW', e));
 }

@@ -1,6 +1,6 @@
 /* Service worker : met l'appli en cache pour un fonctionnement hors ligne.
    Pense à changer CACHE à chaque nouvelle version pour forcer la mise à jour. */
-const CACHE = 'icp-v1.2.0';
+const CACHE = 'icp-v1.2.1';
 const FILES = [
   './', './index.html', './style.css', './app.js', './manifest.webmanifest',
   './vendor/jspdf.umd.min.js', './vendor/jspdf.plugin.autotable.min.js',
@@ -19,7 +19,7 @@ self.addEventListener('activate', e => {
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
   e.respondWith(
-    fetch(e.request).then(r => {
+    fetch(e.request, { cache: 'no-cache' }).then(r => {
       const copy = r.clone();
       caches.open(CACHE).then(c => c.put(e.request, copy));
       return r;
