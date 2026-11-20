@@ -2,7 +2,7 @@
    Données stockées uniquement sur l'appareil (localStorage). */
 'use strict';
 
-const VERSION = '1.1.1';
+const VERSION = '1.1.2';
 const STORE_KEY = 'icp14.v1';
 
 /* ---------- Épreuves ---------- */
@@ -496,13 +496,16 @@ function lucStart(ids) {
   events.push({ at: now + 0.15, kind: 'attention' });
   for (let k = cfg.countdown; k >= 1; k--) events.push({ at: t0 - k, kind: 'count', n: k });
   events.push({ at: t0, kind: 'start' });
-  buildBeeps(cfg).forEach(b => events.push({ at: t0 + b.t, kind: 'beep' }));
+  const beeps = buildBeeps(cfg);
+  beeps.forEach(b => events.push({ at: t0 + b.t, kind: 'beep' }));
+  const perPalier = {};
+  beeps.forEach(b => { (perPalier[b.palier] = perPalier[b.palier] || []).push(b.t); });
   for (let p = 1; p <= 30; p++) {
     events.push({ at: t0 + palierStart(p, cfg), kind: 'palier', n: p });
     if (cfg.palierSec > 30) events.push({ at: t0 + palierStart(p, cfg) + 30, kind: 'half', n: p });
   }
   events.sort((a, b) => a.at - b.at);
-  RUN = { type: 'luc', cfg, t0, events, idx: 0, ids, stops: {}, undo: [], timer: null, raf: null, sid: VIEW.sid, ep: 'luc' };
+  RUN = { type: 'luc', cfg, t0, events, perPalier, idx: 0, ids, stops: {}, undo: [], timer: null, raf: null, sid: VIEW.sid, ep: 'luc' };
   if ('speechSynthesis' in window) speechSynthesis.cancel();
   RUN.timer = setInterval(lucTick, 20);
   keepAwake(true);
@@ -530,6 +533,7 @@ function lucTick() {
     }
   }
 }
+function navDone(p, t) { return (RUN.perPalier[p] || []).filter(x => x <= t + 0.05).length; }
 function lucElapsed() { return AC ? AC.currentTime - RUN.t0 : 0; }
 function lucStop(pid) {
   if (!RUN) return;
@@ -617,7 +621,6 @@ function lucRun() {
   return header('Luc Léger', null, `<button class="hbtn" onclick="A.abortRun()">Arrêter</button>`) + `
   <main class="live">
     <div id="live-top"></div>
-    <div class="sub">${left} en course</div>
     ${runnersHtml('lucStop')}
     <div style="height:14px"></div>
     <button class="btn grey" ${RUN && RUN.undo.length ? '' : 'disabled'} onclick="A.lucUndo()">↶ Annuler la dernière action</button>
@@ -651,7 +654,8 @@ function afterRunRender() {
         const nextChange = palierStart(p + 1, RUN.cfg) - t;
         top.innerHTML = `<div class="clock">${fmtTimeTenth(t * 1000)}</div>
           <div class="palier">${p === 0 ? 'Échauffement' : 'Palier ' + p} · ${num(v)} km/h</div>
-          <div class="sub">Navette ${num(RUN.cfg.distance)} m</div>
+          <div class="navette">Navette ${navDone(p, t)} / ${(RUN.perPalier[p] || []).length}</div>
+          <div class="sub">Piste de ${num(RUN.cfg.distance)} m</div>
           <div class="sub">Palier suivant dans ${Math.ceil(nextChange)} s</div>`;
       }
     } else {

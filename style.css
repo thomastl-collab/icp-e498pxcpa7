@@ -118,3 +118,4 @@ table.synth td.cell.todo { color: #aaa; }
 .empty { text-align: center; color: var(--muted); padding: 30px 10px; }
 .pin { min-width: 0; padding: 11px 10px; border: 1px solid var(--line); border-radius: 10px; font-size: 17px; background: #fff; }
 .delrow { width: 40px; height: 44px; border: 0; background: none; color: var(--muted); font-size: 26px; }
+.navette { font-size: 30px; font-weight: 800; margin: 4px 0; font-variant-numeric: tabular-nums; }
