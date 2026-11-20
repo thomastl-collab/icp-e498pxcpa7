@@ -2,22 +2,22 @@
    Données stockées uniquement sur l'appareil (localStorage). */
 'use strict';
 
-const VERSION = '1.2.1';
+const VERSION = '1.3.0';
 const STORE_KEY = 'icp14.v1';
 
 /* ---------- Épreuves ---------- */
 const EPREUVES = [
-  { id: 'luc', nom: 'Luc Léger', mode: 'luc',
+  { id: 'luc', icon: '🏃', color: '#1e88e5', nom: 'Luc Léger', mode: 'luc',
     consigne: "Course en navettes sur {DIST} m, en couloirs individuels (demi-tours compris). Zone de tolérance de 1 m de part et d'autre de la piste. À chaque bip, franchir entièrement la ligne avec au moins un pied au sol, sans repartir avant le bip. Arrêt si le candidat n'est pas entré dans la zone de tolérance au bip, ne franchit pas entièrement la ligne, ou abandonne. Un candidat qui glisse ou tombe peut continuer s'il rattrape son retard avant le bip suivant." },
-  { id: 'pompes', nom: 'Pompes', mode: 'count',
+  { id: 'pompes', icon: '💪', color: '#ef6c00', nom: 'Pompes', mode: 'count',
     consigne: "Le mouvement se fait sur les pieds, les bras le long du corps. Le thorax doit toucher le sol, puis remonter bras tendus." },
-  { id: 'tractions', nom: 'Tractions', mode: 'count',
+  { id: 'tractions', icon: '🧗', color: '#8e24aa', nom: 'Tractions', mode: 'count',
     consigne: "Prise en supination, paumes de mains vers le ciel. Départ bras tendus, sans balancier, jusqu'à passer les yeux au-dessus de la barre, puis redescendre bras tendus." },
-  { id: 'killy', nom: 'Killy', mode: 'chrono',
+  { id: 'killy', icon: '🪑', color: '#00897b', nom: 'Killy', mode: 'chrono',
     consigne: "Dos contre un mur, les bras le long du corps, les paumes de mains le long du mur. Interdiction de mettre les mains sur les genoux. Jambes à 90°, les genoux se touchent." },
-  { id: 'gainage', nom: 'Gainage planche', mode: 'chrono',
+  { id: 'gainage', icon: '🧘', color: '#43a047', nom: 'Gainage planche', mode: 'chrono',
     consigne: "En appui sur les avant-bras, sans que les mains se touchent, et sur les pieds." },
-  { id: 'souplesse', nom: 'Souplesse', mode: 'length',
+  { id: 'souplesse', icon: '📏', color: '#d81b60', nom: 'Souplesse', mode: 'length',
     consigne: "Pieds nus ou en chaussettes, jambes tendues. Pousser la réglette le plus loin possible et tenir la position 1 seconde (compter « 1, 2 »)." },
 ];
 const EP = Object.fromEntries(EPREUVES.map(e => [e.id, e]));
@@ -237,26 +237,45 @@ function header(title, back, right) {
 
 function render() {
   const v = VIEW, app = $('#app');
-  const views = { home, settings, editSession, sessionView, consigne, pickWave, lucRun, chronoRun, countEntry, lengthEntry, synth };
+  const views = { home, settings, editSession, sessionView, consigne, pickWave, lucRun, chronoRun, countEntry, lengthEntry, synth, multiPick, multiSynth };
   app.innerHTML = (views[v.name] || home)();
   if (v.name === 'lucRun' || v.name === 'chronoRun') afterRunRender();
 }
 
 /* ---------- Accueil ---------- */
+const MOIS = ['janv', 'févr', 'mars', 'avr', 'mai', 'juin', 'juil', 'août', 'sept', 'oct', 'nov', 'déc'];
+function dateBadge(iso) {
+  if (!iso) return `<div class="datebadge"><b>?</b></div>`;
+  const [y, m, d] = iso.split('-');
+  return `<div class="datebadge"><b>${+d}</b><span>${MOIS[+m - 1]} ${y.slice(2)}</span></div>`;
+}
+function sessionProgress(s) {
+  const tot = s.participants.length * EPREUVES.length;
+  const done = EPREUVES.reduce((n, e) => n + doneCount(s, e.id), 0);
+  return tot ? done / tot : 0;
+}
 function home() {
   const list = [...DB.sessions].sort((a, b) => (b.date || '').localeCompare(a.date || '') || b.created - a.created);
   return header('ICP', null, `<button class="hbtn" onclick="A.go('settings')">Réglages</button>`) + `
   <main>
-    <button class="btn" onclick="A.go('editSession')">+ Nouvelle session</button>
-    <div style="height:14px"></div>
-    ${list.length ? `<div class="card">${list.map(s => {
-      const n = s.participants.length;
-      return `<div class="list-item" onclick="A.go('sessionView',{sid:'${s.id}'})">
-        <div class="grow"><b>${esc(fmtDate(s.date))}${s.lieu ? ' · ' + esc(s.lieu) : ''}</b>
-        <div class="muted">${n} participant${n > 1 ? 's' : ''}${s.evaluateur ? ' · ' + esc(s.evaluateur) : ''}</div></div>
+    <div class="hero">
+      <h2>Indicateurs de<br>Condition Physique</h2>
+      <p>${list.length ? `${list.length} session${list.length > 1 ? 's' : ''} enregistrée${list.length > 1 ? 's' : ''}` : 'Crée ta première session pour commencer'}</p>
+      <div class="btns">
+        <button class="btn white" onclick="A.go('editSession')">+ Nouvelle session</button>
+        <button class="btn glass" ${list.length ? '' : 'disabled'} onclick="A.go('multiPick')">Synthèse multi-sessions</button>
+      </div>
+    </div>
+    ${list.length ? `<div class="section-title">Sessions</div>` + list.map(s => {
+      const n = s.participants.length, pr = sessionProgress(s);
+      return `<div class="sess" onclick="A.go('sessionView',{sid:'${s.id}'})">
+        ${dateBadge(s.date)}
+        <div class="grow"><div class="title">${esc(s.lieu || 'Session')}</div>
+        <div class="muted">${n} participant${n > 1 ? 's' : ''}${s.evaluateur ? ' · ' + esc(s.evaluateur) : ''}</div>
+        <div class="minibar"><i style="width:${Math.round(pr * 100)}%"></i></div></div>
         <span class="chev">›</span></div>`;
-    }).join('')}</div>` : `<div class="empty">Aucune session.<br>Crée une session pour commencer.</div>`}
-    <p class="muted" style="text-align:center">Version ${VERSION} · données enregistrées sur cet appareil uniquement</p>
+    }).join('') : `<div class="empty"><div class="big">⏱️</div>Aucune session pour l'instant.</div>`}
+    <div class="footer">Version ${VERSION} · données enregistrées sur cet appareil uniquement</div>
   </main>`;
 }
 
@@ -400,20 +419,26 @@ function doneCount(s, ep) {
 }
 function sessionView() {
   const s = session(); if (!s) return home();
-  const n = s.participants.length;
-  return header(fmtDate(s.date) + (s.lieu ? ' · ' + s.lieu : ''), "A.go('home')",
+  const n = s.participants.length, pr = sessionProgress(s);
+  return header(s.lieu || 'Session', "A.go('home')",
     `<button class="hbtn" onclick="A.go('editSession',{sid:'${s.id}'})">Modifier</button>`) + `
   <main>
+    <div class="card sesshead">${dateBadge(s.date)}
+      <div class="grow"><b>${esc(fmtDate(s.date))}${s.lieu ? ' · ' + esc(s.lieu) : ''}</b>
+      <div class="muted">${n} participant${n > 1 ? 's' : ''}${s.evaluateur ? ' · ' + esc(s.evaluateur) : ''}</div>
+      <div class="minibar"><i style="width:${Math.round(pr * 100)}%"></i></div></div>
+      <b style="color:var(--green)">${Math.round(pr * 100)} %</b></div>
     <div class="epreuves">${EPREUVES.map(e => {
       const d = doneCount(s, e.id);
-      return `<button class="ep ${d === n ? 'done' : ''}" onclick="A.go('consigne',{sid:'${s.id}',ep:'${e.id}'})">
-        <b>${e.nom}</b><span class="prog">${d} / ${n} ${d === n ? '✓' : ''}</span>
-        <div class="bar-prog"><i style="width:${n ? d / n * 100 : 0}%"></i></div></button>`;
+      return `<button class="ep ${d === n && n ? 'done' : ''}" onclick="A.go('consigne',{sid:'${s.id}',ep:'${e.id}'})">
+        <div class="ico" style="background:${e.color}1f">${e.icon}</div>
+        <b>${e.nom}</b><span class="prog">${d} / ${n}</span>
+        <div class="bar-prog"><i style="width:${n ? d / n * 100 : 0}%;background:${e.color}"></i></div></button>`;
     }).join('')}</div>
-    <div style="height:14px"></div>
+    <div style="height:16px"></div>
     <button class="btn" onclick="A.go('synth',{sid:'${s.id}'})">Synthèse et exports</button>
     <div style="height:10px"></div>
-    <button class="btn secondary" onclick="A.addPersonSheet()">+ Ajouter un participant (${n})</button>
+    <button class="btn secondary" onclick="A.addPersonSheet()">+ Ajouter un participant</button>
   </main>`;
 }
 
@@ -422,7 +447,7 @@ function consigne() {
   const s = session(), e = EP[VIEW.ep];
   return header(e.nom, `A.go('sessionView',{sid:'${s.id}'})`) + `
   <main>
-    <div class="consigne">${esc(e.consigne.replace('{DIST}', num(DB.settings.distance)))}</div>
+    <div class="consigne"><div class="consigne-head"><span style="font-size:28px">${e.icon}</span>Consigne à rappeler</div>${esc(e.consigne.replace('{DIST}', num(DB.settings.distance)))}</div>
     <div style="height:14px"></div>
     <button class="btn" onclick="A.go('pickWave',{sid:'${s.id}',ep:'${e.id}'})">Composer la vague</button>
   </main>`;
@@ -651,14 +676,14 @@ function runnersHtml(stopFn) {
   return `<div class="runners">${VIEW.ids.map(id => {
     const p = s.participants.find(x => x.id === id), st = r[id];
     const lab = st ? (VIEW.ep === 'luc' ? `P${st.palier} · ${fmtTime(st.temps)}` : fmtTime(st.temps)) : '';
-    return `<button class="runner ${st ? 'stopped' : ''}" onclick="A.${stopFn}('${id}')">${esc(shortName(p))}${st ? `<small>${lab}</small>` : ''}</button>`;
+    return `<button class="runner ${st ? 'stopped' : ''}" onclick="A.${stopFn}('${id}')">${st ? '✓ ' : ''}${esc(shortName(p))}${st ? `<small>${lab}</small>` : ''}</button>`;
   }).join('')}</div>`;
 }
 function lucRun() {
   const left = RUN ? RUN.ids.filter(id => !RUN.stops[id]).length : 0;
   return header('Luc Léger', null, `<button class="hbtn" onclick="A.abortRun()">Arrêter</button>`) + `
   <main class="live">
-    <div id="live-top"></div>
+    <div id="live-top" class="livecard"></div>
     ${runnersHtml('lucStop')}
     <div style="height:14px"></div>
     <button class="btn grey" ${RUN && RUN.undo.length ? '' : 'disabled'} onclick="A.lucUndo()">↶ Annuler la dernière action</button>
@@ -670,8 +695,8 @@ function chronoRun() {
   return header(e.nom, RUN ? null : `A.go('pickWave',{sid:'${VIEW.sid}',ep:'${VIEW.ep}'})`,
     RUN ? `<button class="hbtn" onclick="A.abortRun()">Arrêter</button>` : '') + `
   <main class="live">
-    <div id="live-top"><div class="clock">0:00,0</div></div>
-    ${RUN ? `<div class="sub">${left} en cours</div>` : `<button class="btn green" style="font-size:22px;padding:20px" onclick="A.chronoBegin()">Départ</button>`}
+    <div id="live-top" class="livecard"><div class="clock">0:00,0</div></div>
+    ${RUN ? `<div class="sub" style="margin-bottom:8px">${left} en cours</div>` : `<button class="btn green" style="font-size:22px;padding:20px;margin-bottom:14px" onclick="A.chronoBegin()">Départ</button>`}
     ${runnersHtml('chronoStop')}
     <div style="height:14px"></div>
     ${RUN ? `<button class="btn grey" ${RUN.undo.length ? '' : 'disabled'} onclick="A.lucUndo()">↶ Annuler la dernière action</button>` : ''}
@@ -697,7 +722,7 @@ function afterRunRender() {
           <div class="sub">Palier suivant dans ${Math.ceil(nextChange)} s</div>`;
       }
     } else {
-      top.innerHTML = `<div class="clock">${fmtTimeTenth(chronoElapsed())}</div>`;
+      top.innerHTML = `<div class="clock">${fmtTimeTenth(chronoElapsed())}</div><div class="sub">${EP[RUN.ep].icon} ${EP[RUN.ep].nom}</div>`;
     }
     RUN.raf = requestAnimationFrame(loop);
   };
@@ -910,6 +935,168 @@ function exportPDF() {
   shareFile(doc.output('blob'), fileBase(s) + '.pdf');
 }
 
+/* ---------- Synthèse multi-sessions ---------- */
+const normKey = v => String(v || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+function sessionYears() {
+  return [...new Set(DB.sessions.map(s => (s.date || '').slice(0, 4)).filter(Boolean))].sort().reverse();
+}
+function multiPick() {
+  if (!VIEW.msel) { VIEW.msel = {}; VIEW.year = 'all'; }
+  const years = sessionYears();
+  const list = [...DB.sessions].filter(s => VIEW.year === 'all' || (s.date || '').startsWith(VIEW.year))
+    .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  const nb = DB.sessions.filter(s => VIEW.msel[s.id]).length;
+  return header('Multi-sessions', "A.go('home')") + `
+  <main>
+    <div class="chips">
+      <button class="chip ${VIEW.year === 'all' ? 'on' : ''}" onclick="A.mYear('all')">Toutes</button>
+      ${years.map(y => `<button class="chip ${VIEW.year === y ? 'on' : ''}" onclick="A.mYear('${y}')">${y}</button>`).join('')}
+    </div>
+    <div class="row between" style="margin-bottom:8px">
+      <span class="muted">${nb} session${nb > 1 ? 's' : ''} sélectionnée${nb > 1 ? 's' : ''}</span>
+      <span class="row" style="gap:6px"><button class="btn small grey" onclick="A.mAll(true)">Tout cocher</button>
+      <button class="btn small grey" onclick="A.mAll(false)">Aucune</button></span>
+    </div>
+    <div class="card">${list.length ? list.map(s => `<div class="pick" onclick="A.mToggle('${s.id}')">
+        <input type="checkbox" ${VIEW.msel[s.id] ? 'checked' : ''} onclick="event.stopPropagation();A.mToggle('${s.id}')">
+        ${dateBadge(s.date)}
+        <div class="grow"><b>${esc(s.lieu || 'Session')}</b><div class="muted">${s.participants.length} participant${s.participants.length > 1 ? 's' : ''}</div></div>
+      </div>`).join('') : `<div class="empty">Aucune session pour cette année.</div>`}</div>
+    <button class="btn" ${nb ? '' : 'disabled'} onclick="A.go('multiSynth',{ids:${esc(JSON.stringify(DB.sessions.filter(s => VIEW.msel[s.id]).map(s => s.id)))}})">Afficher la synthèse (${nb})</button>
+  </main>`;
+}
+function mToggle(id) { VIEW.msel[id] = !VIEW.msel[id]; render(); }
+function mYear(y) { VIEW.year = y; render(); }
+function mAll(v) {
+  DB.sessions.filter(s => VIEW.year === 'all' || (s.date || '').startsWith(VIEW.year)).forEach(s => VIEW.msel[s.id] = v);
+  if (!v) VIEW.msel = {};
+  render();
+}
+function betterResult(ep, a, b) {
+  switch (EP[ep].mode) {
+    case 'luc': return a.palier > b.palier || (a.palier === b.palier && (a.temps || 0) > (b.temps || 0));
+    case 'count': return a.value > b.value;
+    case 'chrono': return a.temps > b.temps;
+    case 'length': return a.best > b.best;
+  }
+  return false;
+}
+/* Fusion : une ligne par personne (prénom + nom, sans accents ni majuscules),
+   meilleur résultat par épreuve ; un résultat l'emporte toujours sur un statut. */
+function mergeSessions(ids) {
+  const sessions = DB.sessions.filter(s => ids.includes(s.id))
+    .sort((a, b) => (a.date || '').localeCompare(b.date || '') || a.created - b.created);
+  const people = new Map();
+  sessions.forEach(s => s.participants.forEach(p => {
+    const key = normKey(p.nom) + '|' + normKey(p.prenom);
+    if (!people.has(key)) people.set(key, { prenom: p.prenom, nom: p.nom, res: {} });
+    const per = people.get(key);
+    per.prenom = p.prenom; per.nom = p.nom;
+    EPREUVES.forEach(e => {
+      const r = (s.results[e.id] || {})[p.id]; if (!r) return;
+      const cur = per.res[e.id];
+      if (!cur || (cur.r.status && !r.status) || (cur.r.status && r.status)
+        || (!cur.r.status && !r.status && betterResult(e.id, r, cur.r))) per.res[e.id] = { r, date: s.date };
+    });
+  }));
+  const rows = [...people.values()].sort((a, b) =>
+    a.nom.localeCompare(b.nom, 'fr', { sensitivity: 'base' }) || a.prenom.localeCompare(b.prenom, 'fr', { sensitivity: 'base' }));
+  return { sessions, rows };
+}
+function valText(ep, r) {
+  if (r.status) return STATUTS[r.status];
+  switch (EP[ep].mode) {
+    case 'luc': return `P${r.palier} · ${fmtTime(r.temps)} · ${num(r.vma)}`;
+    case 'count': return String(r.value);
+    case 'chrono': return fmtTime(r.temps);
+    case 'length': return num(r.best) + ' cm';
+  }
+}
+function multiSynth() {
+  const { sessions, rows } = mergeSessions(VIEW.ids);
+  const dates = sessions.map(s => s.date).filter(Boolean);
+  return header('Synthèse', "A.go('multiPick')") + `
+  <main>
+    <p class="muted">${sessions.length} session${sessions.length > 1 ? 's' : ''}${dates.length ? ' · du ' + fmtDate(dates[0]) + ' au ' + fmtDate(dates[dates.length - 1]) : ''} · ${rows.length} personne${rows.length > 1 ? 's' : ''}<br>Meilleur résultat retenu pour chaque épreuve, avec sa date.</p>
+    <div class="table-wrap"><table class="synth">
+      <tr><th>Nom Prénom</th><th>Luc Léger<br>palier · temps · VMA</th>${EPREUVES.slice(1).map(e => `<th>${e.nom}</th>`).join('')}</tr>
+      ${rows.map(p => `<tr><td>${esc(p.nom)} ${esc(p.prenom)}</td>${EPREUVES.map(e => {
+        const x = p.res[e.id];
+        if (!x) return `<td class="cell todo">—</td>`;
+        return `<td class="cell ${x.r.status ? 'st' : ''}">${esc(valText(e.id, x.r))}<small>${esc(fmtDate(x.date))}</small></td>`;
+      }).join('')}</tr>`).join('')}
+    </table></div>
+    <div style="height:16px"></div>
+    <div class="btns">
+      <button class="btn" onclick="A.exportMultiCSV()">Excel / CSV</button>
+      <button class="btn" onclick="A.exportMultiPDF()">PDF</button>
+    </div>
+  </main>`;
+}
+function multiCells(p) {
+  // [valeur, date] par colonne d'export
+  const g = ep => p.res[ep], d = x => x ? fmtDate(x.date) : '';
+  const st = x => x && x.r.status ? STATUTS[x.r.status] : null;
+  const L = g('luc');
+  const out = [
+    [st(L) ?? (L ? String(L.r.palier) : ''), d(L)],
+    [L && !L.r.status && L.r.temps != null ? fmtTime(L.r.temps) : '', ''],
+    [L && !L.r.status ? num(L.r.vma) : '', ''],
+  ];
+  ['pompes', 'tractions', 'killy', 'gainage', 'souplesse'].forEach(ep => {
+    const x = g(ep);
+    out.push([x ? valText(ep, x.r).replace(' cm', '') : '', d(x)]);
+  });
+  return out;
+}
+function multiMeta() {
+  const { sessions, rows } = mergeSessions(VIEW.ids);
+  const dates = sessions.map(s => s.date).filter(Boolean);
+  const lieux = [...new Set(sessions.map(s => s.lieu).filter(Boolean))];
+  return { sessions, rows, from: dates[0], to: dates[dates.length - 1], lieux };
+}
+function exportMultiCSV() {
+  const { rows, from, to, lieux } = multiMeta();
+  const head = ['Nom', 'Prénom', 'Luc Léger palier', 'Luc Léger temps', 'Luc Léger VMA (km/h)', 'Luc Léger date',
+    'Pompes', 'Pompes date', 'Tractions', 'Tractions date', 'Killy (min:s)', 'Killy date', 'Gainage (min:s)', 'Gainage date',
+    'Souplesse (cm)', 'Souplesse date'];
+  const body = rows.map(p => {
+    const c = multiCells(p);
+    return [p.nom, p.prenom, c[0][0], c[1][0], c[2][0], c[0][1], ...c.slice(3).flatMap(x => x)];
+  });
+  const q = v => /[;"\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
+  const meta = [['Synthèse multi-sessions'], ['Période', `${fmtDate(from)} au ${fmtDate(to)}`], ['Lieux', lieux.join(', ')], []];
+  const csv = '﻿' + [...meta, head, ...body].map(r => r.map(x => q(String(x ?? ''))).join(';')).join('\r\n');
+  shareFile(new Blob([csv], { type: 'text/csv;charset=utf-8' }), `ICP_synthese_${from || ''}_${to || ''}.csv`);
+}
+function exportMultiPDF() {
+  const { rows, from, to, lieux, sessions } = multiMeta();
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+  doc.setFontSize(16); doc.text('Indicateurs de Condition Physique — synthèse', 14, 15);
+  doc.setFontSize(10);
+  doc.text(`${sessions.length} session${sessions.length > 1 ? 's' : ''} du ${fmtDate(from)} au ${fmtDate(to)}${lieux.length ? '   ·   ' + lieux.join(', ') : ''}`, 14, 22, { maxWidth: 270 });
+  doc.text('Meilleur résultat retenu pour chaque épreuve (date de réalisation sous la valeur).', 14, 27);
+  const cells = rows.map(multiCells);
+  const body = rows.map((p, i) => [p.nom, p.prenom, ...cells[i].map(c => c[0])]);
+  doc.autoTable({
+    head: [['Nom', 'Prénom', 'Luc Léger\npalier', 'Luc Léger\ntemps', 'VMA\nkm/h', 'Pompes', 'Tractions', 'Killy', 'Gainage', 'Souplesse\n(cm)']],
+    body, startY: 32, theme: 'grid',
+    styles: { fontSize: 9, halign: 'center', valign: 'top', cellPadding: { top: 2, bottom: 5, left: 2, right: 2 } },
+    headStyles: { fillColor: [183, 28, 28], textColor: 255, valign: 'middle', cellPadding: 2 },
+    columnStyles: { 0: { halign: 'left', fontStyle: 'bold' }, 1: { halign: 'left', fontStyle: 'bold' } },
+    didDrawCell: d => {
+      if (d.section !== 'body' || d.column.index < 2) return;
+      const date = cells[d.row.index][d.column.index - 2][1];
+      if (!date) return;
+      doc.setFontSize(6.5); doc.setTextColor(120);
+      doc.text(date, d.cell.x + d.cell.width / 2, d.cell.y + d.cell.height - 1.6, { align: 'center' });
+      doc.setTextColor(0); doc.setFontSize(9);
+    },
+  });
+  shareFile(doc.output('blob'), `ICP_synthese_${from || ''}_${to || ''}.pdf`);
+}
+
 /* ---------- Feuille modale ---------- */
 function openSheet(html) {
   const m = $('#modal'); m.innerHTML = `<div class="sheet" onclick="event.stopPropagation()">${html}</div>`;
@@ -918,7 +1105,7 @@ function openSheet(html) {
 function closeSheet() { $('#modal').classList.add('hidden'); $('#modal').innerHTML = ''; }
 
 /* ---------- API globale ---------- */
-window.A = { go, distanceSheet, saveDistance, setForm, setRow, addRow, delRow, addPersonSheet, addPerson, saveSettings, resetSettings, testSound, saveSession, deleteSession, toggleSel, selAll, statusSheet,
+window.A = { go, mToggle, mYear, mAll, exportMultiCSV, exportMultiPDF, distanceSheet, saveDistance, setForm, setRow, addRow, delRow, addPersonSheet, addPerson, saveSettings, resetSettings, testSound, saveSession, deleteSession, toggleSel, selAll, statusSheet,
   setStatus, startWave, lucStop, lucUndo, chronoBegin, chronoStop, abortRun, inc, setVal, saveCounts, setEssai,
   saveLengths, editCell, saveCell, exportCSV, exportPDF, closeSheet };
 window._icp = { buildBeeps, palierAt, speedOf, DB: () => DB };
