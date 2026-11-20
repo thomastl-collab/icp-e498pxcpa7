@@ -33,3 +33,7 @@ Toutes les données restent sur l'iPhone (stockage local du navigateur). Rien n'
 3. Sur l'iPhone, ouvre l'appli avec du réseau, ferme-la puis rouvre-la.
 
 Les données enregistrées ne sont pas touchées par une mise à jour.
+
+## Crédits
+
+Annonces vocales générées avec Piper (voix française « siwis », données SIWIS sous licence CC-BY 4.0).

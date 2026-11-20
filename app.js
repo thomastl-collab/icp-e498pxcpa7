@@ -2,7 +2,7 @@
    Données stockées uniquement sur l'appareil (localStorage). */
 'use strict';
 
-const VERSION = '1.1.3';
+const VERSION = '1.2.0';
 const STORE_KEY = 'icp14.v1';
 
 /* ---------- Épreuves ---------- */
@@ -164,8 +164,38 @@ function tone(when, freq, dur, vol = 0.9, type = 'square') {
   g.gain.exponentialRampToValueAtTime(vol, when + 0.005);
   g.gain.setValueAtTime(vol, when + dur - 0.02);
   g.gain.exponentialRampToValueAtTime(0.0001, when + dur);
-  o.connect(g); g.connect(ctx.destination);
+  o.connect(g); g.connect(MASTER || ctx.destination);
   o.start(when); o.stop(when + dur + 0.02);
+}
+/* Annonces vocales enregistrées (fichiers audio/), jouées par Web Audio
+   pour sortir sur le même canal que les bips (enceinte Bluetooth). */
+let MASTER = null;
+const CLIPS = {};
+const CLIP_NAMES = ['attention', '30s', 'c1', 'c2', 'c3', 'c4', 'c5', ...Array.from({ length: 30 }, (_, i) => 'p' + (i + 1))];
+let clipsLoading = null;
+function decode(ctx, buf) {
+  return new Promise((ok, ko) => { const p = ctx.decodeAudioData(buf, ok, ko); if (p && p.catch) p.catch(ko); });
+}
+function loadClips() {
+  if (clipsLoading) return clipsLoading;
+  const ctx = AC;
+  clipsLoading = Promise.all(CLIP_NAMES.map(k => fetch('audio/' + k + '.mp3')
+    .then(r => { if (!r.ok) throw new Error(r.status); return r.arrayBuffer(); })
+    .then(b => decode(ctx, b)).then(buf => { CLIPS[k] = buf; })
+    .catch(e => console.warn('clip', k, e))));
+  return clipsLoading;
+}
+function newMaster() {
+  if (MASTER) { try { MASTER.disconnect(); } catch (e) {} }
+  MASTER = AC.createGain(); MASTER.gain.value = 1; MASTER.connect(AC.destination);
+}
+function playClip(k, when, fallbackText) {
+  const buf = CLIPS[k];
+  if (!buf || !AC) { if (fallbackText) setTimeout(() => speak(fallbackText), Math.max(0, (when - (AC ? AC.currentTime : 0)) * 1000)); return; }
+  const src = AC.createBufferSource(), g = AC.createGain();
+  src.buffer = buf; g.gain.value = 1;
+  src.connect(g); g.connect(MASTER || AC.destination);
+  src.start(Math.max(when, AC.currentTime));
 }
 let frVoice = null;
 function pickVoice() {
@@ -277,9 +307,12 @@ function resetSettings() {
   DB.settings = { ...DEFAULT_SETTINGS }; save(); render();
 }
 function testSound() {
-  audioCtx(); const t = AC.currentTime + 0.1;
-  tone(t, 880, 0.18); tone(t + 1, 880, 0.18);
-  setTimeout(() => speak('Palier 1'), 1600);
+  audioCtx();
+  loadClips().then(() => {
+    const t = AC.currentTime + 0.1;
+    tone(t, 880, 0.18); tone(t + 1, 880, 0.18);
+    playClip('p1', t + 1.6, 'Palier 1'); playClip('30s', t + 2.8, '30 secondes');
+  });
 }
 
 /* ---------- Création / modification de session ---------- */
@@ -479,7 +512,11 @@ function startWave() {
   const ids = s.participants.filter(p => VIEW.sel[p.id]).map(p => p.id);
   if (!ids.length) return;
   const params = { sid: s.id, ep: e.id, ids };
-  if (e.mode === 'luc') { lucStart(ids); go('lucRun', { ...params, _force: true }); }
+  if (e.mode === 'luc') {
+    audioCtx(); // dans l'appui : déverrouille l'audio iOS
+    const btn = document.querySelector('main .btn:last-child'); if (btn) { btn.disabled = true; btn.textContent = 'Préparation du son…'; }
+    loadClips().then(() => { lucStart(ids); go('lucRun', { ...params, _force: true }); });
+  }
   else if (e.mode === 'chrono') { RUN = null; go('chronoRun', params); }
   else if (e.mode === 'count') go('countEntry', params);
   else go('lengthEntry', params);
@@ -507,6 +544,7 @@ function lucStart(ids) {
   events.sort((a, b) => a.at - b.at);
   RUN = { type: 'luc', cfg, t0, events, perPalier, idx: 0, ids, stops: {}, undo: [], timer: null, raf: null, sid: VIEW.sid, ep: 'luc' };
   if ('speechSynthesis' in window) speechSynthesis.cancel();
+  newMaster();
   RUN.timer = setInterval(lucTick, 20);
   keepAwake(true);
 }
@@ -519,17 +557,17 @@ function lucTick() {
     switch (ev.kind) {
       case 'attention':
         tone(ev.at, 660, 0.12); tone(ev.at + 0.18, 660, 0.12); tone(ev.at + 0.36, 660, 0.12);
-        setTimeout(() => speak('Attention'), lead + 600); break;
+        playClip('attention', ev.at + 0.7, 'Attention'); break;
       case 'count':
-        setTimeout(() => speak(String(ev.n), 1.2), lead - 120); break;
+        playClip('c' + ev.n, ev.at, String(ev.n)); break;
       case 'start':
         tone(ev.at, 1046, 0.5); break;
       case 'beep':
         tone(ev.at, 880, 0.2); break;
       case 'palier':
-        setTimeout(() => speak('Palier ' + ev.n), lead); break;
+        playClip('p' + ev.n, ev.at, 'Palier ' + ev.n); break;
       case 'half':
-        setTimeout(() => speak('30 secondes'), lead); break;
+        playClip('30s', ev.at, '30 secondes'); break;
     }
   }
 }
@@ -578,7 +616,7 @@ function stopRun() {
   if (!RUN) return;
   clearInterval(RUN.timer); cancelAnimationFrame(RUN.raf);
   if ('speechSynthesis' in window) speechSynthesis.cancel();
-  if (AC && RUN.type === 'luc') { try { AC.close(); } catch (e) {} AC = null; }
+  if (MASTER) { try { MASTER.disconnect(); } catch (e) {} MASTER = null; }
   RUN = null; keepAwake(false);
 }
 function finishRun() {
