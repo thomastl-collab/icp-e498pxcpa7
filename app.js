@@ -2,13 +2,13 @@
    Données stockées uniquement sur l'appareil (localStorage). */
 'use strict';
 
-const VERSION = '1.1.0';
+const VERSION = '1.1.1';
 const STORE_KEY = 'icp14.v1';
 
 /* ---------- Épreuves ---------- */
 const EPREUVES = [
   { id: 'luc', nom: 'Luc Léger', mode: 'luc',
-    consigne: "Course en navettes sur 20 m, en couloirs individuels (demi-tours compris). Zone de tolérance de 1 m de part et d'autre de la piste. À chaque bip, franchir entièrement la ligne avec au moins un pied au sol, sans repartir avant le bip. Arrêt si le candidat n'est pas entré dans la zone de tolérance au bip, ne franchit pas entièrement la ligne, ou abandonne. Un candidat qui glisse ou tombe peut continuer s'il rattrape son retard avant le bip suivant." },
+    consigne: "Course en navettes sur {DIST} m, en couloirs individuels (demi-tours compris). Zone de tolérance de 1 m de part et d'autre de la piste. À chaque bip, franchir entièrement la ligne avec au moins un pied au sol, sans repartir avant le bip. Arrêt si le candidat n'est pas entré dans la zone de tolérance au bip, ne franchit pas entièrement la ligne, ou abandonne. Un candidat qui glisse ou tombe peut continuer s'il rattrape son retard avant le bip suivant." },
   { id: 'pompes', nom: 'Pompes', mode: 'count',
     consigne: "Le mouvement se fait sur les pieds, les bras le long du corps. Le thorax doit toucher le sol, puis remonter bras tendus." },
   { id: 'tractions', nom: 'Tractions', mode: 'count',
@@ -389,7 +389,7 @@ function consigne() {
   const s = session(), e = EP[VIEW.ep];
   return header(e.nom, `A.go('sessionView',{sid:'${s.id}'})`) + `
   <main>
-    <div class="consigne">${esc(e.consigne)}</div>
+    <div class="consigne">${esc(e.consigne.replace('{DIST}', num(DB.settings.distance)))}</div>
     <div style="height:14px"></div>
     <button class="btn" onclick="A.go('pickWave',{sid:'${s.id}',ep:'${e.id}'})">Composer la vague</button>
   </main>`;
@@ -432,8 +432,30 @@ function pickWave() {
       </div>`;
     }).join('')}
       <button class="btn small secondary" style="margin-top:10px" onclick="A.addPersonSheet()">+ Ajouter un participant</button></div>
+    ${e.mode === 'luc' ? distanceCard() : ''}
     <button class="btn" ${nb ? '' : 'disabled'} onclick="A.startWave()">${e.mode === 'luc' || e.mode === 'chrono' ? 'Démarrer' : 'Saisir les résultats'} (${nb})</button>
   </main>`;
+}
+function distanceCard() {
+  const d = DB.settings.distance, std = d === DEFAULT_SETTINGS.distance;
+  return `<div class="card row" style="${std ? '' : 'background:#fff3e0;border:2px solid var(--orange)'}">
+    <div class="grow"><div class="muted">Distance de navette</div>
+    <div style="font-size:26px;font-weight:800;${std ? '' : 'color:var(--orange)'}">${num(d)} m</div>
+    ${std ? '' : `<div class="muted">Différente de la distance standard (${DEFAULT_SETTINGS.distance} m)</div>`}</div>
+    <button class="btn small secondary" onclick="A.distanceSheet()">Modifier</button></div>`;
+}
+function distanceSheet() {
+  openSheet(`<h3>Distance de navette</h3>
+    <label class="field">Longueur de la piste (m)<input id="ds-val" type="text" inputmode="decimal" value="${num(DB.settings.distance)}"></label>
+    <p class="muted">Les vitesses des paliers restent les mêmes, seul l'intervalle entre les bips est recalculé. La distance reste enregistrée pour les prochains tests.</p>
+    <button class="btn" onclick="A.saveDistance()">Enregistrer</button>
+    <button class="btn grey" onclick="A.saveDistance(${DEFAULT_SETTINGS.distance})">Revenir à ${DEFAULT_SETTINGS.distance} m</button>
+    <button class="btn grey" onclick="A.closeSheet()">Annuler</button>`);
+}
+function saveDistance(v) {
+  const d = v != null ? v : parseFloat(String($('#ds-val').value).replace(',', '.'));
+  if (isNaN(d) || d < 5 || d > 50) { toast('Distance entre 5 et 50 m'); return; }
+  DB.settings.distance = d; save(); closeSheet(); render(); toast(`Distance : ${num(d)} m`);
 }
 function toggleSel(pid, val) {
   VIEW.sel[pid] = val === undefined ? !VIEW.sel[pid] : val; render();
@@ -623,12 +645,13 @@ function afterRunRender() {
     if (RUN.type === 'luc') {
       const t = lucElapsed();
       if (t < 0) {
-        top.innerHTML = `<div class="sub">Départ dans</div><div class="countdown">${Math.ceil(-t)}</div>`;
+        top.innerHTML = `<div class="sub">Départ dans · navette ${num(RUN.cfg.distance)} m</div><div class="countdown">${Math.ceil(-t)}</div>`;
       } else {
         const p = palierAt(t, RUN.cfg), v = speedOf(p, RUN.cfg);
         const nextChange = palierStart(p + 1, RUN.cfg) - t;
         top.innerHTML = `<div class="clock">${fmtTimeTenth(t * 1000)}</div>
           <div class="palier">${p === 0 ? 'Échauffement' : 'Palier ' + p} · ${num(v)} km/h</div>
+          <div class="sub">Navette ${num(RUN.cfg.distance)} m</div>
           <div class="sub">Palier suivant dans ${Math.ceil(nextChange)} s</div>`;
       }
     } else {
@@ -853,7 +876,7 @@ function openSheet(html) {
 function closeSheet() { $('#modal').classList.add('hidden'); $('#modal').innerHTML = ''; }
 
 /* ---------- API globale ---------- */
-window.A = { go, setForm, setRow, addRow, delRow, addPersonSheet, addPerson, saveSettings, resetSettings, testSound, saveSession, deleteSession, toggleSel, selAll, statusSheet,
+window.A = { go, distanceSheet, saveDistance, setForm, setRow, addRow, delRow, addPersonSheet, addPerson, saveSettings, resetSettings, testSound, saveSession, deleteSession, toggleSel, selAll, statusSheet,
   setStatus, startWave, lucStop, lucUndo, chronoBegin, chronoStop, abortRun, inc, setVal, saveCounts, setEssai,
   saveLengths, editCell, saveCell, exportCSV, exportPDF, closeSheet };
 window._icp = { buildBeeps, palierAt, speedOf, DB: () => DB };
