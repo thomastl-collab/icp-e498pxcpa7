@@ -1,4 +1,4 @@
-# ICP Pompiers 14 — web app (PWA)
+# ICP — web app (PWA)
 
 Appli hors ligne pour relever les Indicateurs de Condition Physique (Luc Léger, pompes, tractions, Killy, gainage, souplesse).
 Toutes les données restent sur l'iPhone (stockage local du navigateur). Rien n'est envoyé en ligne.
@@ -29,7 +29,7 @@ Toutes les données restent sur l'iPhone (stockage local du navigateur). Rien n'
 ## Mettre à jour l'appli
 
 1. Remplace les fichiers modifiés dans le dépôt GitHub.
-2. Dans `sw.js`, change la ligne `const CACHE = 'icp14-v1.0.0';` (ex. `v1.0.1`) pour forcer la mise à jour.
+2. Dans `sw.js`, change la ligne `const CACHE = 'icp-v1.1.0';` (ex. `v1.1.1`) pour forcer la mise à jour.
 3. Sur l'iPhone, ouvre l'appli avec du réseau, ferme-la puis rouvre-la.
 
 Les données enregistrées ne sont pas touchées par une mise à jour.

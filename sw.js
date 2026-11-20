@@ -1,6 +1,6 @@
 /* Service worker : met l'appli en cache pour un fonctionnement hors ligne.
    Pense à changer CACHE à chaque nouvelle version pour forcer la mise à jour. */
-const CACHE = 'icp14-v1.0.0';
+const CACHE = 'icp-v1.1.0';
 const FILES = [
   './', './index.html', './style.css', './app.js', './manifest.webmanifest',
   './vendor/jspdf.umd.min.js', './vendor/jspdf.plugin.autotable.min.js',

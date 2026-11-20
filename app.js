@@ -1,8 +1,8 @@
-/* ICP Pompiers 14 — web app (PWA) hors ligne
+/* ICP — Indicateurs de Condition Physique — web app (PWA) hors ligne
    Données stockées uniquement sur l'appareil (localStorage). */
 'use strict';
 
-const VERSION = '1.0.0';
+const VERSION = '1.1.0';
 const STORE_KEY = 'icp14.v1';
 
 /* ---------- Épreuves ---------- */
@@ -42,6 +42,9 @@ function load() {
       const d = JSON.parse(raw);
       d.settings = Object.assign({}, DEFAULT_SETTINGS, d.settings || {});
       d.sessions = d.sessions || [];
+      d.sessions.forEach(se => se.participants.forEach(p => {
+        if (p.prenom == null) { const parts = (p.nom || '').split(' '); p.prenom = parts.shift() || ''; p.nom = parts.join(' '); }
+      }));
       return d;
     }
   } catch (e) { console.error(e); }
@@ -212,7 +215,7 @@ function render() {
 /* ---------- Accueil ---------- */
 function home() {
   const list = [...DB.sessions].sort((a, b) => (b.date || '').localeCompare(a.date || '') || b.created - a.created);
-  return header('ICP Pompiers 14', null, `<button class="hbtn" onclick="A.go('settings')">Réglages</button>`) + `
+  return header('ICP', null, `<button class="hbtn" onclick="A.go('settings')">Réglages</button>`) + `
   <main>
     <button class="btn" onclick="A.go('editSession')">+ Nouvelle session</button>
     <div style="height:14px"></div>
@@ -245,7 +248,7 @@ function settings() {
       <label class="field">Augmentation par palier (km/h)<input id="st-inc" type="number" inputmode="decimal" step="0.1" value="${s.inc}"></label>
       <label class="field">Durée d'un palier (s)<input id="st-palier" type="number" inputmode="numeric" step="1" value="${s.palierSec}"></label>
       <div class="btns"><button class="btn" onclick="A.saveSettings()">Enregistrer</button>
-      <button class="btn grey" onclick="A.resetSettings()">Valeurs SDIS</button></div>
+      <button class="btn grey" onclick="A.resetSettings()">Valeurs par défaut</button></div>
     </div>
     <div class="card">
       <h2>Test du son</h2>
@@ -270,7 +273,7 @@ function saveSettings() {
   Object.assign(DB.settings, n); save(); toast('Réglages enregistrés'); render();
 }
 function resetSettings() {
-  if (!confirm('Revenir aux valeurs du règlement SDIS ?')) return;
+  if (!confirm('Revenir aux valeurs par défaut (règlement) ?')) return;
   DB.settings = { ...DEFAULT_SETTINGS }; save(); render();
 }
 function testSound() {
@@ -280,41 +283,77 @@ function testSound() {
 }
 
 /* ---------- Création / modification de session ---------- */
+function fullName(p) { return `${p.prenom || ''} ${p.nom || ''}`.trim(); }
+function shortName(p) { return `${p.prenom || ''}${p.nom ? ' ' + p.nom.trim().charAt(0).toUpperCase() + '.' : ''}`.trim(); }
+function cleanName(v) { return String(v || '').trim().replace(/\s+/g, ' '); }
 function editSession() {
   const s = VIEW.sid ? session() : null;
   const today = new Date().toISOString().slice(0, 10);
+  if (!VIEW.rows) {
+    VIEW.rows = s ? s.participants.map(p => ({ id: p.id, prenom: p.prenom, nom: p.nom })) : [];
+    VIEW.rows.push({ prenom: '', nom: '' });
+    VIEW.form = { date: s ? s.date : today, lieu: s ? s.lieu : '', evaluateur: s ? s.evaluateur : '' };
+  }
+  const f = VIEW.form;
   return header(s ? 'Modifier la session' : 'Nouvelle session', s ? `A.go('sessionView',{sid:'${s.id}'})` : "A.go('home')") + `
   <main><div class="card">
-    <label class="field">Date<input id="f-date" type="date" value="${s ? s.date : today}"></label>
-    <label class="field">Lieu<input id="f-lieu" type="text" value="${esc(s ? s.lieu : '')}" placeholder="ex. CIS Caen"></label>
-    <label class="field">Évaluateur<input id="f-eval" type="text" value="${esc(s ? s.evaluateur : '')}" placeholder="Prénom Nom"></label>
-    <label class="field">Participants (un « Prénom Nom » par ligne)
-      <textarea id="f-parts" placeholder="Jean Dupont&#10;Marie Martin">${esc(s ? s.participants.map(p => p.nom).join('\n') : '')}</textarea></label>
-    <button class="btn" onclick="A.saveSession()">${s ? 'Enregistrer' : 'Créer la session'}</button>
-    ${s ? `<div style="height:10px"></div><button class="btn grey" onclick="A.deleteSession()">Supprimer la session</button>` : ''}
-  </div></main>`;
+    <label class="field">Date<input type="date" value="${esc(f.date)}" oninput="A.setForm('date',this.value)"></label>
+    <label class="field">Lieu<input type="text" value="${esc(f.lieu)}" placeholder="ex. CIS Caen" oninput="A.setForm('lieu',this.value)"></label>
+    <label class="field">Évaluateur<input type="text" value="${esc(f.evaluateur)}" placeholder="Prénom Nom" oninput="A.setForm('evaluateur',this.value)"></label>
+  </div>
+  <div class="card">
+    <h2>Participants</h2>
+    <div class="row muted" style="font-size:13px;margin-bottom:4px"><span class="grow">Prénom</span><span class="grow">Nom</span><span style="width:40px"></span></div>
+    ${VIEW.rows.map((r, i) => `<div class="row" style="margin-bottom:8px">
+      <input class="pin grow" id="pr-${i}" type="text" autocapitalize="words" value="${esc(r.prenom)}" placeholder="Prénom" oninput="A.setRow(${i},'prenom',this.value)">
+      <input class="pin grow" id="nm-${i}" type="text" autocapitalize="words" value="${esc(r.nom)}" placeholder="Nom" oninput="A.setRow(${i},'nom',this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();A.addRow(${i})}">
+      <button class="delrow" onclick="A.delRow(${i})" aria-label="Supprimer">×</button></div>`).join('')}
+    <button class="btn secondary" onclick="A.addRow()">+ Ajouter un participant</button>
+  </div>
+  <button class="btn" onclick="A.saveSession()">${s ? 'Enregistrer' : 'Créer la session'}</button>
+  ${s ? `<div style="height:10px"></div><button class="btn grey" onclick="A.deleteSession()">Supprimer la session</button>` : ''}
+  </main>`;
 }
+function setForm(k, v) { VIEW.form[k] = v; }
+function setRow(i, k, v) { VIEW.rows[i][k] = v; }
+function addRow(after) {
+  const i = after == null ? VIEW.rows.length : after + 1;
+  VIEW.rows.splice(i, 0, { prenom: '', nom: '' }); render();
+  const el = $('#pr-' + i); if (el) el.focus();
+}
+function delRow(i) { VIEW.rows.splice(i, 1); if (!VIEW.rows.length) VIEW.rows.push({ prenom: '', nom: '' }); render(); }
 function saveSession() {
-  const names = $('#f-parts').value.split('\n').map(x => x.trim().replace(/\s+/g, ' ')).filter(Boolean);
-  if (!names.length) { toast('Ajoute au moins un participant'); return; }
+  const rows = VIEW.rows.map(r => ({ id: r.id, prenom: cleanName(r.prenom), nom: cleanName(r.nom) })).filter(r => r.prenom || r.nom);
+  if (!rows.length) { toast('Ajoute au moins un participant'); return; }
   let s = VIEW.sid ? session() : null;
-  if (!s) {
-    s = { id: uid(), created: Date.now(), participants: [], results: {} };
-    DB.sessions.push(s);
-  }
-  const old = s.participants;
-  const pool = [...old];
-  const parts = names.map(nom => {
-    const i = pool.findIndex(p => p.nom === nom);
-    if (i >= 0) return pool.splice(i, 1)[0];
-    return { id: uid(), nom };
-  });
-  const removedWithResults = pool.filter(p => EPREUVES.some(e => s.results[e.id] && s.results[e.id][p.id]));
-  if (removedWithResults.length && !confirm(`Supprimer aussi les résultats de : ${removedWithResults.map(p => p.nom).join(', ')} ?`)) return;
-  pool.forEach(p => EPREUVES.forEach(e => { if (s.results[e.id]) delete s.results[e.id][p.id]; }));
-  s.participants = parts;
-  s.date = $('#f-date').value; s.lieu = $('#f-lieu').value.trim(); s.evaluateur = $('#f-eval').value.trim();
+  const isNew = !s;
+  if (isNew) s = { id: uid(), created: Date.now(), participants: [], results: {} };
+  const keep = new Set(rows.filter(r => r.id).map(r => r.id));
+  const removed = s.participants.filter(p => !keep.has(p.id));
+  const removedWithResults = removed.filter(p => EPREUVES.some(e => s.results[e.id] && s.results[e.id][p.id]));
+  if (removedWithResults.length && !confirm(`Supprimer aussi les résultats de : ${removedWithResults.map(fullName).join(', ')} ?`)) return;
+  removed.forEach(p => EPREUVES.forEach(e => { if (s.results[e.id]) delete s.results[e.id][p.id]; }));
+  s.participants = rows.map(r => ({ id: r.id || uid(), prenom: r.prenom, nom: r.nom }));
+  s.date = VIEW.form.date; s.lieu = cleanName(VIEW.form.lieu); s.evaluateur = cleanName(VIEW.form.evaluateur);
+  if (isNew) DB.sessions.push(s);
   save(); go('sessionView', { sid: s.id });
+}
+/* Ajout rapide d'un participant à une session en cours */
+function addPersonSheet() {
+  openSheet(`<h3>Ajouter un participant</h3>
+    <label class="field">Prénom<input id="ap-prenom" type="text" autocapitalize="words"></label>
+    <label class="field">Nom<input id="ap-nom" type="text" autocapitalize="words" onkeydown="if(event.key==='Enter')A.addPerson()"></label>
+    <button class="btn" onclick="A.addPerson()">Ajouter</button>
+    <button class="btn grey" onclick="A.closeSheet()">Annuler</button>`);
+  setTimeout(() => { const el = $('#ap-prenom'); if (el) el.focus(); }, 50);
+}
+function addPerson() {
+  const prenom = cleanName($('#ap-prenom').value), nom = cleanName($('#ap-nom').value);
+  if (!prenom && !nom) { toast('Saisis au moins un prénom ou un nom'); return; }
+  const s = session(), p = { id: uid(), prenom, nom };
+  s.participants.push(p); save();
+  if (VIEW.sel) VIEW.sel[p.id] = true;
+  closeSheet(); toast(fullName(p) + ' ajouté(e)'); render();
 }
 function deleteSession() {
   if (!confirm('Supprimer définitivement cette session et tous ses résultats ?')) return;
@@ -340,6 +379,8 @@ function sessionView() {
     }).join('')}</div>
     <div style="height:14px"></div>
     <button class="btn" onclick="A.go('synth',{sid:'${s.id}'})">Synthèse et exports</button>
+    <div style="height:10px"></div>
+    <button class="btn secondary" onclick="A.addPersonSheet()">+ Ajouter un participant (${n})</button>
   </main>`;
 }
 
@@ -372,6 +413,10 @@ function pickWave() {
   const sel = VIEW.sel, nb = Object.values(sel).filter(Boolean).length;
   return header(e.nom + ' · vague', `A.go('consigne',{sid:'${s.id}',ep:'${e.id}'})`) + `
   <main>
+    ${s.participants.every(p => r[p.id]) ? `<div class="card" style="background:#e8f5e9">
+      <b>✓ Épreuve terminée pour tous les participants</b>
+      <div style="height:10px"></div>
+      <button class="btn green" onclick="A.go('sessionView',{sid:'${s.id}'})">Retour à l'accueil de la session</button></div>` : ''}
     <div class="row between" style="margin-bottom:8px">
       <span class="muted">${nb} sélectionné${nb > 1 ? 's' : ''}</span>
       <span><button class="btn small grey" onclick="A.selAll(true)">Tous</button>
@@ -381,11 +426,12 @@ function pickWave() {
       const rr = r[p.id];
       return `<div class="pick">
         <input type="checkbox" ${sel[p.id] ? 'checked' : ''} onchange="A.toggleSel('${p.id}',this.checked)">
-        <div class="grow" onclick="A.toggleSel('${p.id}')"><b>${esc(p.nom)}</b>
+        <div class="grow" onclick="A.toggleSel('${p.id}')"><b>${esc(fullName(p))}</b>
         ${rr ? `<div><span class="tag ${rr.status ? 'st' : 'ok'}">${esc(resultLabel(e.id, rr))}</span></div>` : ''}</div>
         <button class="stbtn" onclick="A.statusSheet('${p.id}')">Statut</button>
       </div>`;
-    }).join('')}</div>
+    }).join('')}
+      <button class="btn small secondary" style="margin-top:10px" onclick="A.addPersonSheet()">+ Ajouter un participant</button></div>
     <button class="btn" ${nb ? '' : 'disabled'} onclick="A.startWave()">${e.mode === 'luc' || e.mode === 'chrono' ? 'Démarrer' : 'Saisir les résultats'} (${nb})</button>
   </main>`;
 }
@@ -395,7 +441,7 @@ function toggleSel(pid, val) {
 function selAll(v) { Object.keys(VIEW.sel).forEach(k => VIEW.sel[k] = v); render(); }
 function statusSheet(pid, ep = VIEW.ep, after) {
   const s = session(), p = s.participants.find(x => x.id === pid);
-  openSheet(`<h3>${esc(p.nom)} · ${EP[ep].nom}</h3>
+  openSheet(`<h3>${esc(fullName(p))} · ${EP[ep].nom}</h3>
     ${Object.entries(STATUTS).map(([k, l]) => `<button class="btn secondary" onclick="A.setStatus('${pid}','${ep}','${k}')">${l}</button>`).join('')}
     <button class="btn grey" onclick="A.setStatus('${pid}','${ep}',null)">Effacer le résultat</button>
     <button class="btn grey" onclick="A.closeSheet()">Annuler</button>`);
@@ -429,7 +475,10 @@ function lucStart(ids) {
   for (let k = cfg.countdown; k >= 1; k--) events.push({ at: t0 - k, kind: 'count', n: k });
   events.push({ at: t0, kind: 'start' });
   buildBeeps(cfg).forEach(b => events.push({ at: t0 + b.t, kind: 'beep' }));
-  for (let p = 1; p <= 30; p++) events.push({ at: t0 + palierStart(p, cfg), kind: 'palier', n: p });
+  for (let p = 1; p <= 30; p++) {
+    events.push({ at: t0 + palierStart(p, cfg), kind: 'palier', n: p });
+    if (cfg.palierSec > 30) events.push({ at: t0 + palierStart(p, cfg) + 30, kind: 'half', n: p });
+  }
   events.sort((a, b) => a.at - b.at);
   RUN = { type: 'luc', cfg, t0, events, idx: 0, ids, stops: {}, undo: [], timer: null, raf: null, sid: VIEW.sid, ep: 'luc' };
   if ('speechSynthesis' in window) speechSynthesis.cancel();
@@ -453,8 +502,9 @@ function lucTick() {
       case 'beep':
         tone(ev.at, 880, 0.2); break;
       case 'palier':
-        tone(ev.at, 523, 0.09, 0.7, 'sine'); tone(ev.at + 0.13, 659, 0.12, 0.7, 'sine');
-        setTimeout(() => speak('Palier ' + ev.n), lead + 280); break;
+        setTimeout(() => speak('Palier ' + ev.n), lead); break;
+      case 'half':
+        setTimeout(() => speak('30 secondes'), lead); break;
     }
   }
 }
@@ -516,9 +566,12 @@ function finishRun() {
     openSheet(`<h3>Vague terminée</h3>
       <div class="card" style="box-shadow:none;padding:0">${ids.map(id => {
         const p = s.participants.find(x => x.id === id);
-        return `<div class="list-item"><span class="grow">${esc(p.nom)}</span><b>${esc(resultLabel(ep, r[id]))}</b></div>`;
+        return `<div class="list-item"><span class="grow">${esc(fullName(p))}</span><b>${esc(resultLabel(ep, r[id]))}</b></div>`;
       }).join('')}</div>
-      <button class="btn" onclick="A.closeSheet()">OK</button>`);
+      ${s.participants.every(p => r[p.id])
+        ? `<button class="btn green" onclick="A.closeSheet();A.go('sessionView',{sid:'${sid}'})">Retour à l'accueil de la session</button>
+           <button class="btn grey" onclick="A.closeSheet()">Rester sur l'épreuve</button>`
+        : `<button class="btn" onclick="A.closeSheet()">Vague suivante</button>`}`);
   }, type === 'luc' ? 700 : 0);
 }
 function abortRun() {
@@ -534,7 +587,7 @@ function runnersHtml(stopFn) {
   return `<div class="runners">${VIEW.ids.map(id => {
     const p = s.participants.find(x => x.id === id), st = r[id];
     const lab = st ? (VIEW.ep === 'luc' ? `P${st.palier} · ${fmtTime(st.temps)}` : fmtTime(st.temps)) : '';
-    return `<button class="runner ${st ? 'stopped' : ''}" onclick="A.${stopFn}('${id}')">${esc(p.nom)}${st ? `<small>${lab}</small>` : ''}</button>`;
+    return `<button class="runner ${st ? 'stopped' : ''}" onclick="A.${stopFn}('${id}')">${esc(shortName(p))}${st ? `<small>${lab}</small>` : ''}</button>`;
   }).join('')}</div>`;
 }
 function lucRun() {
@@ -595,7 +648,7 @@ function countEntry() {
     <p class="muted">Nombre maximal de répétitions, saisi à la fin.</p>
     <div class="card">${VIEW.ids.map(id => {
       const p = s.participants.find(x => x.id === id);
-      return `<div class="list-item"><div class="grow"><b>${esc(p.nom)}</b><br>
+      return `<div class="list-item"><div class="grow"><b>${esc(fullName(p))}</b><br>
         <button class="stbtn" onclick="A.statusSheet('${id}')">Statut…</button></div>
         <div class="counter"><button onclick="A.inc('${id}',-1)">−</button>
         <input id="c-${id}" type="number" inputmode="numeric" min="0" value="${VIEW.vals[id]}" oninput="A.setVal('${id}',this.value)">
@@ -632,7 +685,7 @@ function lengthEntry() {
     <p class="muted">En cm, à 0,5 cm près, à partir de 0. 2 essais max, le meilleur est retenu.</p>
     <div class="card">${VIEW.ids.map(id => {
       const p = s.participants.find(x => x.id === id);
-      return `<div class="list-item essai"><div class="grow"><b>${esc(p.nom)}</b><br>
+      return `<div class="list-item essai"><div class="grow"><b>${esc(fullName(p))}</b><br>
         <button class="stbtn" onclick="A.statusSheet('${id}')">Statut…</button></div>
         <input type="text" inputmode="decimal" placeholder="Essai 1" value="${VIEW.vals[id].e1}" oninput="A.setEssai('${id}','e1',this.value)">
         <input type="text" inputmode="decimal" placeholder="Essai 2" value="${VIEW.vals[id].e2}" oninput="A.setEssai('${id}','e2',this.value)">
@@ -682,7 +735,7 @@ function synth() {
     <p class="muted">${esc(fmtDate(s.date))}${s.lieu ? ' · ' + esc(s.lieu) : ''}${s.evaluateur ? ' · Évaluateur : ' + esc(s.evaluateur) : ''}<br>Touchez une case pour la corriger.</p>
     <div class="table-wrap"><table class="synth">
       <tr><th>Participant</th><th>Luc Léger<br><span class="muted">palier · temps · VMA</span></th>${EPREUVES.slice(1).map(e => `<th>${e.nom}</th>`).join('')}</tr>
-      ${s.participants.map(p => `<tr><td>${esc(p.nom)}</td>${EPREUVES.map(e => cell(e.id, p.id)).join('')}</tr>`).join('')}
+      ${s.participants.map(p => `<tr><td>${esc(fullName(p))}</td>${EPREUVES.map(e => cell(e.id, p.id)).join('')}</tr>`).join('')}
     </table></div>
     <div style="height:14px"></div>
     <div class="btns">
@@ -701,7 +754,7 @@ function editCell(ep, pid) {
   else if (e.mode === 'chrono') fields = `<label class="field">Temps (min:s)<input id="m-a" type="text" inputmode="decimal" value="${r.temps != null ? fmtTime(r.temps) : ''}" placeholder="ex. 2:35"></label>`;
   else fields = `<label class="field">Essai 1 (cm)<input id="m-a" type="text" inputmode="decimal" value="${r.e1 != null ? num(r.e1) : ''}"></label>
       <label class="field">Essai 2 (cm)<input id="m-b" type="text" inputmode="decimal" value="${r.e2 != null ? num(r.e2) : ''}"></label>`;
-  openSheet(`<h3>${esc(p.nom)} · ${e.nom}</h3>${fields}
+  openSheet(`<h3>${esc(fullName(p))} · ${e.nom}</h3>${fields}
     <button class="btn" onclick="A.saveCell('${ep}','${pid}')">Enregistrer</button>
     <div style="height:10px"></div>
     <div class="btns">${Object.entries(STATUTS).map(([k, l]) => `<button class="btn secondary small" style="width:100%" onclick="A.setStatus('${pid}','${ep}','${k}')">${l}</button>`).join('')}
@@ -732,20 +785,22 @@ function saveCell(ep, pid) {
 }
 
 /* ---------- Exports ---------- */
-function exportRows(s) {
-  const head = ['Participant', 'Luc Léger palier', 'Luc Léger temps', 'Luc Léger VMA (km/h)', 'Pompes', 'Tractions',
-    'Killy (min:s)', 'Gainage (min:s)', 'Souplesse essai 1 (cm)', 'Souplesse essai 2 (cm)', 'Souplesse meilleur (cm)'];
+function exportRows(s, pdf = false) {
+  const head = ['Prénom', 'Nom', 'Luc Léger palier', 'Luc Léger temps', 'Luc Léger VMA (km/h)', 'Pompes', 'Tractions',
+    'Killy (min:s)', 'Gainage (min:s)'].concat(pdf ? ['Souplesse (cm)'] : ['Souplesse essai 1 (cm)', 'Souplesse essai 2 (cm)', 'Souplesse meilleur (cm)']);
   const rows = s.participants.map(p => {
     const g = ep => (s.results[ep] || {})[p.id];
     const st = r => r && r.status ? STATUTS[r.status] : null;
     const L = g('luc'), P = g('pompes'), T = g('tractions'), K = g('killy'), G = g('gainage'), S = g('souplesse');
+    const soup = pdf ? [st(S) ?? (S ? num(S.best) : '')]
+      : [st(S) ?? (S && S.e1 != null ? num(S.e1) : ''), S && !S.status && S.e2 != null ? num(S.e2) : '', S && !S.status ? num(S.best) : ''];
     return [
-      p.nom,
-      st(L) ?? (L ? L.palier : ''), L && !L.status ? fmtTime(L.temps) : '', L && !L.status ? num(L.vma) : '',
+      p.prenom, p.nom,
+      st(L) ?? (L ? L.palier : ''), L && !L.status && L.temps != null ? fmtTime(L.temps) : '', L && !L.status ? num(L.vma) : '',
       st(P) ?? (P ? P.value : ''), st(T) ?? (T ? T.value : ''),
       st(K) ?? (K ? fmtTime(K.temps) : ''), st(G) ?? (G ? fmtTime(G.temps) : ''),
-      st(S) ?? (S && S.e1 != null ? num(S.e1) : ''), S && !S.status && S.e2 != null ? num(S.e2) : '', S && !S.status ? num(S.best) : '',
-    ].map(x => String(x));
+      ...soup,
+    ].map(x => String(x ?? ''));
   });
   return { head, rows };
 }
@@ -771,22 +826,21 @@ function exportCSV() {
   shareFile(new Blob([csv], { type: 'text/csv;charset=utf-8' }), fileBase(s) + '.csv');
 }
 function exportPDF() {
-  const s = session(), { head, rows } = exportRows(s);
+  const s = session(), { rows } = exportRows(s, true);
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
-  doc.setFontSize(16); doc.text('Indicateurs de Condition Physique — SDIS 14', 14, 15);
+  doc.setFontSize(16); doc.text('Indicateurs de Condition Physique', 14, 15);
   doc.setFontSize(11);
   doc.text(`Session du ${fmtDate(s.date)}${s.lieu ? ' — ' + s.lieu : ''}${s.evaluateur ? '   ·   Évaluateur : ' + s.evaluateur : ''}`, 14, 23);
-  const shortHead = ['Participant', 'Luc L.\npalier', 'Luc L.\ntemps', 'VMA\nkm/h', 'Pompes', 'Tractions', 'Killy', 'Gainage', 'Soupl.\nessai 1', 'Soupl.\nessai 2', 'Soupl.\nmeilleur'];
+  const shortHead = ['Prénom', 'Nom', 'Luc Léger\npalier', 'Luc Léger\ntemps', 'VMA\nkm/h', 'Pompes', 'Tractions', 'Killy', 'Gainage', 'Souplesse\n(cm)'];
   doc.autoTable({
     head: [shortHead], body: rows, startY: 29, theme: 'grid',
     styles: { fontSize: 9, halign: 'center', valign: 'middle', cellPadding: 2 },
     headStyles: { fillColor: [183, 28, 28], textColor: 255 },
-    columnStyles: { 0: { halign: 'left', fontStyle: 'bold', cellWidth: 48 } },
+    columnStyles: { 0: { halign: 'left', fontStyle: 'bold' }, 1: { halign: 'left', fontStyle: 'bold' } },
   });
   const y = doc.lastAutoTable.finalY + 10;
   doc.setFontSize(9);
-  doc.text(`Luc Léger : navette ${num(DB.settings.distance)} m, échauffement ${num(DB.settings.warmupSec / 60)} min à ${num(DB.settings.warmupSpeed)} km/h, palier 1 à ${num(DB.settings.v1)} km/h, +${num(DB.settings.inc)} km/h par palier.`, 14, y);
   doc.text('Signature de l’évaluateur :', 200, y + 8);
   shareFile(doc.output('blob'), fileBase(s) + '.pdf');
 }
@@ -799,7 +853,7 @@ function openSheet(html) {
 function closeSheet() { $('#modal').classList.add('hidden'); $('#modal').innerHTML = ''; }
 
 /* ---------- API globale ---------- */
-window.A = { go, saveSettings, resetSettings, testSound, saveSession, deleteSession, toggleSel, selAll, statusSheet,
+window.A = { go, setForm, setRow, addRow, delRow, addPersonSheet, addPerson, saveSettings, resetSettings, testSound, saveSession, deleteSession, toggleSel, selAll, statusSheet,
   setStatus, startWave, lucStop, lucUndo, chronoBegin, chronoStop, abortRun, inc, setVal, saveCounts, setEssai,
   saveLengths, editCell, saveCell, exportCSV, exportPDF, closeSheet };
 window._icp = { buildBeeps, palierAt, speedOf, DB: () => DB };
