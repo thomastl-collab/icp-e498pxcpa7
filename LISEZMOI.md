@@ -5,11 +5,11 @@ Toutes les données restent sur l'iPhone (stockage local du navigateur). Rien n'
 
 ## Mise en ligne sur GitHub Pages (gratuit)
 
-1. Sur github.com, crée un dépôt public nommé `icp14`.
+1. Sur github.com, crée un dépôt public avec un nom difficile à deviner.
 2. Bouton **Add file > Upload files** : glisse **tout le contenu** de ce dossier (index.html, app.js, style.css, sw.js,
    manifest.webmanifest, les dossiers `icons` et `vendor`). Puis **Commit changes**.
 3. **Settings > Pages** : Source = *Deploy from a branch*, Branch = `main`, dossier `/ (root)`, **Save**.
-4. Après 1 à 2 minutes, l'appli est en ligne sur `https://<ton-identifiant>.github.io/icp14/`.
+4. Après 1 à 2 minutes, l'appli est en ligne sur `https://<ton-identifiant>.github.io/<nom-du-dépôt>/`.
 
 ## Installation sur l'iPhone
 

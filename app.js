@@ -2,7 +2,7 @@
    Données stockées uniquement sur l'appareil (localStorage). */
 'use strict';
 
-const VERSION = '1.1.2';
+const VERSION = '1.1.3';
 const STORE_KEY = 'icp14.v1';
 
 /* ---------- Épreuves ---------- */
